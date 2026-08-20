@@ -1,0 +1,104 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// USERS
+// ============================================================
+
+model User {
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String   @unique
+  password_hash String
+  role          String
+  created_at    DateTime @default(now())
+
+  expenses_created Expense[] @relation("ExpenseCreatedBy")
+}
+
+// ============================================================
+// PRODUCTS
+// ============================================================
+
+model Product {
+  id              Int      @id @default(autoincrement())
+  name            String
+  product_code    String   @unique
+  type            String
+  category_id     Int
+  price           Decimal  @db.Decimal(12, 2)
+  image_url       String?
+  image_public_id String?
+  description     String?
+  manufacturer_id Int
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  category     Category     @relation("CategoryToProduct", fields: [category_id], references: [id])
+  manufacturer Manufacturer @relation("ManufacturerToProduct", fields: [manufacturer_id], references: [id])
+}
+
+// ============================================================
+// MANUFACTURERS
+// ============================================================
+
+model Manufacturer {
+  id         Int      @id @default(autoincrement())
+  name       String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  products Product[] @relation("ManufacturerToProduct")
+}
+
+// ============================================================
+// CATEGORIES
+// ============================================================
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  products Product[] @relation("CategoryToProduct")
+}
+
+// ============================================================
+// VISITORS
+// ============================================================
+
+model Visitor {
+  id         Int      @id @default(autoincrement())
+  name       String
+  phone      String?
+  type       String
+  visited_at DateTime
+  remarks    String?
+  created_at DateTime @default(now())
+}
+
+// ============================================================
+// EXPENSES
+// ============================================================
+
+model Expense {
+  id           Int      @id @default(autoincrement())
+  category     String
+  amount       Decimal  @db.Decimal(12, 2)
+  description  String?
+  expense_date DateTime @db.Date
+  approved_by  String?
+  created_by   Int
+  created_at   DateTime @default(now())
+
+  creator User @relation("ExpenseCreatedBy", fields: [created_by], references: [id])
+}
