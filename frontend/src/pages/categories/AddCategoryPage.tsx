@@ -4,8 +4,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Save } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { categoriesApi } from '../../api/categories.api';
+import axios from 'axios';
 
 const categorySchema = z.object({
   name: z.string().min(1, 'Category name is required').max(100, 'Name must be under 100 characters'),
@@ -30,10 +33,23 @@ export const AddCategoryPage: React.FC = () => {
 
   const onSubmit = async (data: CategoryFormValues) => {
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 700));
-    console.log('New category:', data);
-    setIsSubmitting(false);
-    navigate('/categories');
+    try {
+      await categoriesApi.create({
+        name: data.name,
+        description: data.description,
+        is_active: data.is_active ?? true,
+      });
+      toast.success('Category created successfully');
+      navigate('/categories');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        toast.error(error.response.data.error || 'Failed to create category');
+      } else {
+        toast.error('An unexpected error occurred');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

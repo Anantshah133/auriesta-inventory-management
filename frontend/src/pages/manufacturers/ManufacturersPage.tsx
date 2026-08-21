@@ -1,16 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Factory, Pencil, Trash2, Save, X, Package } from 'lucide-react';
+import { Plus, Factory, Pencil, Trash2, Save, X, Package, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Modal } from '../../components/ui/Modal';
 import { StatusBadge } from '../../components/ui/Badge';
 import { SearchInput } from '../../components/ui/SearchInput';
-import { mockManufacturers as initialManufacturers, mockProducts } from '../../data/mockData';
+import { manufacturersApi } from '../../api/manufacturers.api';
 import type { Manufacturer } from '../../types';
 
 const manufacturerSchema = z.object({
@@ -24,7 +25,8 @@ const formatDate = (d: string) =>
 
 export const ManufacturersPage: React.FC = () => {
   const navigate = useNavigate();
-  const [manufacturers, setManufacturers] = useState<Manufacturer[]>(initialManufacturers);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; manufacturer: Manufacturer | null }>({
@@ -39,6 +41,21 @@ export const ManufacturersPage: React.FC = () => {
     resolver: zodResolver(manufacturerSchema),
   });
 
+  // ── Fetch all manufacturers on mount ──
+  useEffect(() => {
+    const fetchManufacturers = async () => {
+      try {
+        const data = await manufacturersApi.getAll();
+        setManufacturers(data);
+      } catch {
+        toast.error('Failed to load manufacturers');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchManufacturers();
+  }, []);
+
   const filtered = useMemo(
     () =>
       manufacturers.filter((m) =>
@@ -47,18 +64,15 @@ export const ManufacturersPage: React.FC = () => {
     [manufacturers, search]
   );
 
-  // Count products per manufacturer
-  const productCounts = useMemo(() => {
-    const counts: Record<number, number> = {};
-    mockProducts.forEach((p) => {
-      counts[p.manufacturer_id] = (counts[p.manufacturer_id] || 0) + 1;
-    });
-    return counts;
-  }, []);
-
-  const handleDelete = () => {
-    if (deleteModal.manufacturer) {
+  const handleDelete = async () => {
+    if (!deleteModal.manufacturer) return;
+    try {
+      await manufacturersApi.delete(deleteModal.manufacturer.id);
       setManufacturers((prev) => prev.filter((m) => m.id !== deleteModal.manufacturer!.id));
+      toast.success('Manufacturer deleted');
+    } catch {
+      toast.error('Failed to delete manufacturer');
+    } finally {
       setDeleteModal({ open: false, manufacturer: null });
     }
   };
@@ -69,17 +83,23 @@ export const ManufacturersPage: React.FC = () => {
   };
 
   const handleEditSubmit = async (data: ManufacturerFormValues) => {
+    if (!editModal.manufacturer) return;
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setManufacturers((prev) =>
-      prev.map((m) =>
-        m.id === editModal.manufacturer!.id
-          ? { ...m, ...data, is_active: data.is_active ?? true }
-          : m
-      )
-    );
-    setIsSubmitting(false);
-    setEditModal({ open: false, manufacturer: null });
+    try {
+      const updated = await manufacturersApi.update(editModal.manufacturer.id, {
+        name: data.name,
+        is_active: data.is_active ?? true,
+      });
+      setManufacturers((prev) =>
+        prev.map((m) => (m.id === editModal.manufacturer!.id ? updated : m))
+      );
+      toast.success('Manufacturer updated');
+      setEditModal({ open: false, manufacturer: null });
+    } catch {
+      toast.error('Failed to update manufacturer');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -112,7 +132,12 @@ export const ManufacturersPage: React.FC = () => {
 
       {/* Table */}
       <div className="card overflow-hidden">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span className="text-sm">Loading manufacturers…</span>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
               <Factory className="w-8 h-8 text-gray-300" />
@@ -130,7 +155,6 @@ export const ManufacturersPage: React.FC = () => {
                   <th>#</th>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Products</th>
                   <th>Created</th>
                   <th className="text-right">Actions</th>
                 </tr>
@@ -148,15 +172,6 @@ export const ManufacturersPage: React.FC = () => {
                       </div>
                     </td>
                     <td><StatusBadge isActive={mfr.is_active} /></td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-sm text-gray-700 font-medium">
-                          {productCounts[mfr.id] || 0}
-                        </span>
-                        <span className="text-xs text-gray-400">products</span>
-                      </div>
-                    </td>
                     <td className="text-gray-400 text-xs whitespace-nowrap">
                       {formatDate(mfr.created_at)}
                     </td>

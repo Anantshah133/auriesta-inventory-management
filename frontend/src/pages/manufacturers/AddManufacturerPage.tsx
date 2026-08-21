@@ -4,8 +4,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Save } from 'lucide-react';
+import toast from 'react-hot-toast';
+import axios from 'axios';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { manufacturersApi } from '../../api/manufacturers.api';
 
 const manufacturerSchema = z.object({
   name: z.string().min(1, 'Manufacturer name is required').max(200, 'Name must be under 200 characters'),
@@ -29,10 +32,22 @@ export const AddManufacturerPage: React.FC = () => {
 
   const onSubmit = async (data: ManufacturerFormValues) => {
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 700));
-    console.log('New manufacturer:', data);
-    setIsSubmitting(false);
-    navigate('/manufacturers');
+    try {
+      await manufacturersApi.create({
+        name: data.name,
+        is_active: data.is_active ?? true,
+      });
+      toast.success('Manufacturer created successfully');
+      navigate('/manufacturers');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        toast.error(error.response.data.error || 'Failed to create manufacturer');
+      } else {
+        toast.error('An unexpected error occurred');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

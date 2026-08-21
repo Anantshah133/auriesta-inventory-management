@@ -1,16 +1,17 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Tag, Pencil, Trash2, Save, X } from 'lucide-react';
+import { Plus, Tag, Pencil, Trash2, Save, X, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Modal } from '../../components/ui/Modal';
 import { StatusBadge } from '../../components/ui/Badge';
 import { SearchInput } from '../../components/ui/SearchInput';
-import { mockCategories as initialCategories } from '../../data/mockData';
+import { categoriesApi } from '../../api/categories.api';
 import type { Category } from '../../types';
 
 const categorySchema = z.object({
@@ -25,7 +26,8 @@ const formatDate = (d: string) =>
 
 export const CategoriesPage: React.FC = () => {
   const navigate = useNavigate();
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; category: Category | null }>({
@@ -40,6 +42,21 @@ export const CategoriesPage: React.FC = () => {
     resolver: zodResolver(categorySchema),
   });
 
+  // ── Fetch all categories on mount ──
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const data = await categoriesApi.getAll();
+        setCategories(data);
+      } catch {
+        toast.error('Failed to load categories');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   const filtered = useMemo(
     () =>
       categories.filter((c) =>
@@ -48,9 +65,15 @@ export const CategoriesPage: React.FC = () => {
     [categories, search]
   );
 
-  const handleDelete = () => {
-    if (deleteModal.category) {
+  const handleDelete = async () => {
+    if (!deleteModal.category) return;
+    try {
+      await categoriesApi.delete(deleteModal.category.id);
       setCategories((prev) => prev.filter((c) => c.id !== deleteModal.category!.id));
+      toast.success('Category deleted');
+    } catch {
+      toast.error('Failed to delete category');
+    } finally {
       setDeleteModal({ open: false, category: null });
     }
   };
@@ -61,17 +84,24 @@ export const CategoriesPage: React.FC = () => {
   };
 
   const handleEditSubmit = async (data: CategoryFormValues) => {
+    if (!editModal.category) return;
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === editModal.category!.id
-          ? { ...c, ...data, description: data.description ?? null, is_active: data.is_active ?? true }
-          : c
-      )
-    );
-    setIsSubmitting(false);
-    setEditModal({ open: false, category: null });
+    try {
+      const updated = await categoriesApi.update(editModal.category.id, {
+        name: data.name,
+        description: data.description,
+        is_active: data.is_active ?? true,
+      });
+      setCategories((prev) =>
+        prev.map((c) => (c.id === editModal.category!.id ? updated : c))
+      );
+      toast.success('Category updated');
+      setEditModal({ open: false, category: null });
+    } catch {
+      toast.error('Failed to update category');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -104,7 +134,12 @@ export const CategoriesPage: React.FC = () => {
 
       {/* Table */}
       <div className="card overflow-hidden">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span className="text-sm">Loading categories…</span>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
               <Tag className="w-8 h-8 text-gray-300" />

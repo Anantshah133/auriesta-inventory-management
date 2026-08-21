@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import axios from 'axios';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { ImageUpload } from '../../components/ui/ImageUpload';
 import { PRODUCT_TYPES } from '../../types';
-import { mockProducts, mockCategories, mockManufacturers } from '../../data/mockData';
+import { productsApi } from '../../api/products.api';
+import { categoriesApi } from '../../api/categories.api';
+import { manufacturersApi } from '../../api/manufacturers.api';
+import type { Product, Category, Manufacturer } from '../../types';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
@@ -28,42 +33,101 @@ type ProductFormValues = z.infer<typeof productSchema>;
 export const EditProductPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  const [product, setProduct] = useState<Product | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Find mock product by id
-  const product = mockProducts.find((p) => p.id === Number(id));
 
   const {
     register,
     handleSubmit,
     control,
+    reset,
     formState: { errors },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: product
-      ? {
-          name: product.name,
-          product_code: product.product_code,
-          type: product.type,
-          category_id: product.category_id,
-          manufacturer_id: product.manufacturer_id,
-          price: Number(product.price),
-          description: product.description ?? '',
-        }
-      : {},
   });
 
+  // ── Fetch product + dropdowns in parallel ──
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [prod, cats, mfrs] = await Promise.all([
+          productsApi.getById(Number(id)),
+          categoriesApi.getAll(),
+          manufacturersApi.getAll(),
+        ]);
+        setProduct(prod);
+        setCategories(cats);
+        setManufacturers(mfrs);
+        reset({
+          name: prod.name,
+          product_code: prod.product_code,
+          type: prod.type,
+          category_id: prod.category_id,
+          manufacturer_id: prod.manufacturer_id,
+          price: Number(prod.price),
+          description: prod.description ?? '',
+        });
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          setNotFound(true);
+        } else {
+          toast.error('Failed to load product');
+          navigate('/products');
+        }
+      } finally {
+        setPageLoading(false);
+      }
+    };
+    loadData();
+  }, [id, navigate, reset]);
+
   const onSubmit = async (data: ProductFormValues) => {
+    if (!product) return;
     setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 800));
-    console.log('Updated product data:', data);
-    console.log('New image file:', imageFile);
-    setIsSubmitting(false);
-    navigate('/products');
+    try {
+      const formData = new FormData();
+      formData.append('name', data.name);
+      formData.append('product_code', data.product_code);
+      formData.append('type', data.type);
+      formData.append('category_id', String(data.category_id));
+      formData.append('manufacturer_id', String(data.manufacturer_id));
+      formData.append('price', String(data.price));
+      if (data.description) formData.append('description', data.description);
+      if (imageFile) formData.append('image', imageFile);
+
+      await productsApi.update(product.id, formData);
+      toast.success('Product updated successfully');
+      navigate('/products');
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        toast.error(error.response.data.error || 'Failed to update product');
+      } else {
+        toast.error('An unexpected error occurred');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  if (!product) {
+  if (pageLoading) {
+    return (
+      <div className="page-container">
+        <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-sm">Loading product…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound || !product) {
     return (
       <div className="page-container">
         <div className="card-padded flex flex-col items-center gap-4 py-12">
@@ -171,7 +235,7 @@ export const EditProductPage: React.FC = () => {
                     <Select
                       label="Category"
                       placeholder="Select category"
-                      options={mockCategories.map((c) => ({ value: c.id, label: c.name }))}
+                      options={categories.map((c) => ({ value: c.id, label: c.name }))}
                       error={errors.category_id?.message}
                       required
                       id="edit-product-category"
@@ -186,7 +250,7 @@ export const EditProductPage: React.FC = () => {
                     <Select
                       label="Manufacturer"
                       placeholder="Select manufacturer"
-                      options={mockManufacturers.map((m) => ({ value: m.id, label: m.name }))}
+                      options={manufacturers.map((m) => ({ value: m.id, label: m.name }))}
                       error={errors.manufacturer_id?.message}
                       required
                       id="edit-product-manufacturer"

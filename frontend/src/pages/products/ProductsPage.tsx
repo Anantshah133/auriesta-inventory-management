@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -7,15 +7,18 @@ import {
   Pencil,
   Trash2,
   Filter,
+  Loader2,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Button } from '../../components/ui/Button';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Pagination } from '../../components/ui/Pagination';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Modal } from '../../components/ui/Modal';
 import { TypeBadge } from '../../components/ui/Badge';
-import { mockProducts, mockCategories } from '../../data/mockData';
-import type { Product, ProductType } from '../../types';
+import { productsApi } from '../../api/products.api';
+import { categoriesApi } from '../../api/categories.api';
+import type { Product, ProductType, Category } from '../../types';
 import { PRODUCT_TYPES } from '../../types';
 
 const LIMIT = 10;
@@ -29,8 +32,12 @@ const formatDate = (dateStr: string) =>
 export const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
 
-  // Mock data state (simulate real data management)
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  // Data state
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -50,22 +57,38 @@ export const ProductsPage: React.FC = () => {
     product: null,
   });
 
-  // Filtered & paginated products
-  const filtered = useMemo(() => {
-    return products.filter((p) => {
-      const q = search.toLowerCase();
-      const matchesSearch =
-        !search ||
-        p.name.toLowerCase().includes(q) ||
-        p.product_code.toLowerCase().includes(q);
-      const matchesType = !typeFilter || p.type === typeFilter;
-      const matchesCategory = !categoryFilter || p.category_id === categoryFilter;
-      return matchesSearch && matchesType && matchesCategory;
-    });
-  }, [products, search, typeFilter, categoryFilter]);
+  // ── Fetch categories for the filter dropdown ──
+  useEffect(() => {
+    categoriesApi.getAll().then(setCategories).catch(() => {});
+  }, []);
 
-  const totalPages = Math.ceil(filtered.length / LIMIT);
-  const paginated = filtered.slice((currentPage - 1) * LIMIT, currentPage * LIMIT);
+  // ── Fetch products from API ──
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await productsApi.getAll({
+        page: currentPage,
+        limit: LIMIT,
+        search: search || undefined,
+        categoryId: categoryFilter || undefined,
+      });
+      // Apply type filter client-side (backend doesn't support it as a query param)
+      const filtered = typeFilter
+        ? res.data.filter((p) => p.type === typeFilter)
+        : res.data;
+      setProducts(filtered);
+      setTotal(typeFilter ? filtered.length : res.meta.total);
+      setTotalPages(typeFilter ? Math.ceil(filtered.length / LIMIT) : res.meta.totalPages);
+    } catch {
+      toast.error('Failed to load products');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, search, typeFilter, categoryFilter]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
@@ -80,9 +103,15 @@ export const ProductsPage: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const handleDelete = () => {
-    if (deleteModal.product) {
-      setProducts((prev) => prev.filter((p) => p.id !== deleteModal.product!.id));
+  const handleDelete = async () => {
+    if (!deleteModal.product) return;
+    try {
+      await productsApi.delete(deleteModal.product.id);
+      toast.success('Product deleted');
+      setDeleteModal({ open: false, product: null });
+      fetchProducts();
+    } catch {
+      toast.error('Failed to delete product');
       setDeleteModal({ open: false, product: null });
     }
   };
@@ -102,7 +131,7 @@ export const ProductsPage: React.FC = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Products</h1>
-          <p className="page-subtitle">{filtered.length} product{filtered.length !== 1 ? 's' : ''} found</p>
+          <p className="page-subtitle">{total} product{total !== 1 ? 's' : ''} found</p>
         </div>
         <Button
           leftIcon={<Plus className="w-4 h-4" />}
@@ -147,7 +176,7 @@ export const ProductsPage: React.FC = () => {
               id="category-filter"
             >
               <option value="">All Categories</option>
-              {mockCategories.map((c) => (
+              {categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -165,7 +194,7 @@ export const ProductsPage: React.FC = () => {
             )}
             {categoryFilter && (
               <span className="badge badge-active">
-                Category: {mockCategories.find((c) => c.id === categoryFilter)?.name}
+                Category: {categories.find((c) => c.id === categoryFilter)?.name}
               </span>
             )}
             <button
@@ -180,7 +209,12 @@ export const ProductsPage: React.FC = () => {
 
       {/* ── Products Table ── */}
       <div className="card overflow-hidden">
-        {paginated.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span className="text-sm">Loading products…</span>
+          </div>
+        ) : products.length === 0 ? (
           <div className="empty-state">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
               <Package className="w-8 h-8 text-gray-300" />
@@ -218,7 +252,7 @@ export const ProductsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map((product) => (
+                  {products.map((product) => (
                     <tr key={product.id}>
                       <td>
                         <div className="flex items-center gap-3">
@@ -303,7 +337,7 @@ export const ProductsPage: React.FC = () => {
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
-                total={filtered.length}
+                total={total}
                 limit={LIMIT}
                 onPageChange={setCurrentPage}
               />
