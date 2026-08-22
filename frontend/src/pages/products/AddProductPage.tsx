@@ -21,7 +21,9 @@ const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   product_code: z.string().min(1, 'Product code is required'),
   type: z.enum(['Silver Plated', 'German Silver', 'Gold Plated', 'Brass', 'Stainless Steel'], {
-    errorMap: () => ({ message: 'Please select a product type' }),
+    invalid_type_error: 'Please select a product type',
+    required_error: 'Please select a product type',
+    message: 'Please select a product type',
   }),
   category_id: z.coerce.number().int().positive('Please select a category'),
   manufacturer_id: z.coerce.number().int().positive('Please select a manufacturer'),
@@ -47,9 +49,9 @@ export const AddProductPage: React.FC = () => {
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      type: undefined,
-      category_id: undefined,
-      manufacturer_id: undefined,
+      type: '' as any,
+      category_id: '' as any,
+      manufacturer_id: '' as any,
     },
   });
 

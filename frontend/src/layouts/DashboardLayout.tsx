@@ -10,7 +10,6 @@ import {
   X,
   Bell,
   ChevronRight,
-  Gem,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/auriesta-logo-without-bg.png';
@@ -80,12 +79,15 @@ export const DashboardLayout: React.FC = () => {
       <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
-            <Gem className="w-5 h-5 text-white" />
-          </div>
-          <div className="min-w-0">
+          <img
+            src={logo}
+            alt="Auriesta"
+            className="h-8 w-auto object-contain flex-shrink-0"
+            style={{ filter: 'brightness(0) invert(1)' }}
+          />
+          <div className="min-w-0 flex-1">
             <h1 className="text-white font-bold text-sm leading-tight truncate">Auriesta</h1>
-            <p className="text-white/50 text-xs truncate">Inventory Management</p>
+            <p className="text-white/50 text-[10px] truncate">Inventory management</p>
           </div>
           {/* Mobile close button */}
           <button
